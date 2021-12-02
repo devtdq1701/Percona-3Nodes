@@ -1,0 +1,12 @@
+---
+- hosts: percona
+  become: yes
+  become_method: sudo
+  roles:
+    - role: firewalld
+      tags:
+      - firewalld
+
+    - role: percona
+      tags:
+      - percona

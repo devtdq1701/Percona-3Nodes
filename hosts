@@ -1,0 +1,4 @@
+[percona]
+master ansible_host=192.168.5.13 ansible_user=quangtran ansible_password=quang12345 ansible_port=34567
+backup1 ansible_host=192.168.5.14 ansible_user=quangtran ansible_password=quang12345 ansible_port=34567
+backup2 ansible_host=192.168.5.15 ansible_user=quangtran ansible_password=quang12345 ansible_port=34567

@@ -1,0 +1,91 @@
+---
+- name: Change SELinux mode
+  shell: setenforce 0
+
+- name: Config '{{ selinux_dir }}'
+  template:
+    src: "templates/selinux.cnf.j2"
+    dest: '{{ selinux_dir }}'
+
+- name: Remove MySQL
+  yum: name='{{ mysql_remove_packages }}' state=absent
+  # with_items: '{{ mysql_remove_packages }}'
+
+- name: Add Percona Repository
+  yum: name='{{ percona_repos }}' state=latest
+  # with_items: '{{ percona_repos }}'
+
+- name: Install Percona
+  yum: name='{{ percona_packages }}' state=latest
+  # with_items: '{{ percona_packages }}'
+
+- name: Start MySQL service
+  service: name=mysql state=started
+
+- name: Change temp root password
+  shell: |
+    temp_password=$(grep password /var/log/mysqld.log | awk '{print $NF}' | head -n1)
+    mysql_passwd="{{ mysql_root_password }}"
+    echo "ALTER USER 'root'@'localhost' IDENTIFIED BY '$mysql_passwd'; flush privileges;" > reset_pass.sql
+    mysql -u root --password=$temp_password --connect-expired-password < reset_pass.sql
+
+- name: Stopped MySQL
+  service: name=mysql state=stopped
+
+- name: Config Percona1
+  template:
+    src: templates/percona1.cnf.j2
+    dest: "{{ mysql_config }}"
+  when: "'{{ ansible_host }}' == '{{ master_ip }}'"
+
+- name: Config Backup Nodes
+  template:
+    src: templates/percona2.cnf.j2
+    dest: "{{ mysql_config }}"
+  when: "'{{ ansible_host }}' == '{{ backup1_ip }}'"
+
+- name: Config Backup Nodes
+  template:
+    src: templates/percona3.cnf.j2
+    dest: "{{ mysql_config }}"
+  when: "'{{ ansible_host }}' == '{{ backup2_ip }}'"
+
+- name: start mysql@bootstrap
+  service:
+    name: "mysql@bootstrap"
+    state: started
+    enabled: yes
+  when: "'{{ ansible_host }}' == '{{ master_ip }}'"
+
+- name: "Create SST user"
+  mysql_user:
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    user: "{{ mysql_user_sst }}"
+    password: "{{ mysql_password_sst }}"
+    priv: "*.*:grant,reload,lock tables,process,replication client"
+  when: "'{{ ansible_host }}' == '{{ master_ip }}'"
+
+- name: Create {{ mysql_database }} database
+  mysql_db:
+    name: "{{ mysql_database }}"
+    state: present
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+  when: "'{{ ansible_host }}' == '{{ master_ip }}'"
+
+- name: "Create voiceotp user"
+  mysql_user:
+    login_user: root
+    login_password: "{{ mysql_root_password }}"
+    user: "{{ mysql_user }}"
+    password: "{{ mysql_password }}"
+    priv: "{{ mysql_database }}.*:ALL"
+  when: "'{{ ansible_host }}' == '{{ master_ip }}'"
+
+- name: Start MySQL in Backup Nodes
+  service:
+    name: mysql
+    state: restarted
+    enabled: yes
+  when: "'{{ ansible_host }}' != '{{ master_ip }}'"
